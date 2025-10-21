@@ -3,6 +3,10 @@
 
 import { useState } from "react"; // Use State import to manage component states
 import "./App.css"; // CSS import
+import { Routes, Route } from "react-router-dom";
+import Home from "./pages/Home";
+import Chatbot from "./pages/Chatbot";
+import NavBar from "./Components/NavBar";
 
 function App() {
   // re-add free-text input state for the original chatbot UI
@@ -88,94 +92,13 @@ function App() {
 
   return (
     <div style={{ padding: "2rem", fontFamily: "sans-serif" }}>
-      <h2>WIP Chatbot</h2>
-
-      <div
-        style={{
-          marginBottom: "1rem",
-          maxHeight: "300px",
-          overflowY: "auto",
-          border: "1px solid #ccc",
-          padding: "1rem",
-        }}
-      >
-        {chatlog.map((msg, idx) => (
-          <div key={idx} style={{ marginBottom: "0.5rem" }}>
-            <strong>{msg.role === "user" ? "You" : "Bot"}:</strong>{" "}
-            {msg.content}
-          </div>
-        ))}
-      </div>
-
-      <textarea
-        rows="4"
-        cols="50"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Type your message..."
-      />
-      <br />
-      <button onClick={sendFreeText} disabled={loading}>
-        {loading ? "Sending..." : "Send"}
-      </button>
-
-      <form onSubmit={handleSubmit} style={{ marginTop: "1rem" }}>
-        <div style={{ marginBottom: "0.5rem" }}>
-          <label>
-            <input
-              type="radio"
-              name="mode"
-              value="zip"
-              checked={mode === "zip"}
-              onChange={() => setMode("zip")}
-            />
-            Search by ZIP code
-          </label>{" "}
-          <label>
-            <input
-              type="radio"
-              name="mode"
-              value="city"
-              checked={mode === "city"}
-              onChange={() => setMode("city")}
-            />
-            Search by City & State
-          </label>
-        </div>
-
-        {mode === "zip" ? (
-          <div style={{ marginBottom: "0.5rem" }}>
-            <input
-              type="text"
-              placeholder="ZIP code (5 digits)"
-              value={zipcode}
-              onChange={(e) => setZipcode(e.target.value)}
-              maxLength={5}
-            />
-          </div>
-        ) : (
-          <div style={{ marginBottom: "0.5rem" }}>
-            <input
-              type="text"
-              placeholder="City"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              style={{ marginRight: "0.5rem" }}
-            />
-            <input
-              type="text"
-              placeholder="State (e.g. CA)"
-              value={regionState}
-              onChange={(e) => setRegionState(e.target.value)}
-              style={{ width: "80px" }}
-            />
-          </div>
-        )}
-
-        <button type="submit" disabled={loading}>
-          {loading ? "Sending..." : "Submit"}
-        </button>
-      </form>
+      <NavBar />
+      <main>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/chatbot" element={<Chatbot />} />
+        </Routes>
+      </main>
     </div>
   );
 }

@@ -1,26 +1,54 @@
 package chatbot.demo;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+
+import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 @CrossOrigin
 @RestController
 public class HomeController {
-    @RequestMapping("/")
-    public String home() {
-        return "Spring Boot";
+
+    private final RapidService rapidService;
+
+    // inject the service (Spring will manage it automatically)
+    public HomeController(RapidService rapidService) {
+        this.rapidService = rapidService;
     }
-    
+
+    // test endpoint to verify Spring is running
+    @GetMapping("/")
+    public String home() {
+        return "Spring Boot is running";
+    }
+
+    // GET method to call the RapidAPI needs zipcode
+    @GetMapping("/api/shelter")
+    public Mono<String> getShelterByZip(@RequestParam String zipcode) {
+        return rapidService.getByZip(zipcode);
+    }
 }
 
-AsyncHttpClient client = new DefaultAsyncHttpClient();
-client.prepare("GET", "https://homeless-shelter.p.rapidapi.com/zipcode?zipcode=98004")
-	.setHeader("x-rapidapi-key", "9b9e81e29cmshad754327cf7c3bcp1636c1jsn6e6f41957c77")
-	.setHeader("x-rapidapi-host", "homeless-shelter.p.rapidapi.com")
-	.execute()
-	.toCompletableFuture()
-	.thenAccept(System.out::println)
-	.join();
+@Service
+class RapidService {
 
-client.close();
+    private final WebClient client;
+
+    public RapidService() {
+        this.client = WebClient.builder()
+                .baseUrl("https://homeless-shelter.p.rapidapi.com")
+                .defaultHeader("x-rapidapi-key", "9b9e81e29cmshad754327cf7c3bcp1636c1jsn6e6f41957c77")
+                .defaultHeader("x-rapidapi-host", "homeless-shelter.p.rapidapi.com")
+                .build();
+    }
+
+    public Mono<String> getByZip(String zipcode) {
+        return client.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/zipcode")
+                        .queryParam("zipcode", zipcode)
+                        .build())
+                .retrieve()
+                .bodyToMono(String.class);
+    }
+}
