@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ChatMessage from "../components/ChatMessage";
 import ChatInput from "../components/ChatInput";
+import { cleanInput } from "../utils/inputCleaner";
 import "../components/Chat.css";
 
 export default function Chatbot() {
@@ -13,9 +14,9 @@ export default function Chatbot() {
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState("");
+  const [conversationHistory, setConversationHistory] = useState("");
   const scrollerRef = useRef(null);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     scrollerRef.current?.scrollTo({
       top: scrollerRef.current.scrollHeight,
@@ -26,27 +27,36 @@ export default function Chatbot() {
   async function sendMessage(userText) {
     if (!userText.trim()) return;
     setError("");
-
-    const userMsg = { id: crypto.randomUUID(), role: "user", text: userText };
-    setMessages((m) => [...m, userMsg]);
     setIsTyping(true);
 
+    const cleaned = cleanInput(userText);
+    const updatedHistory = conversationHistory + `\nUser: ${cleaned}`;
+    setConversationHistory(updatedHistory);
+
+    const userMsg = {
+      id: crypto.randomUUID(),
+      role: "user",
+      text: cleaned,
+    };
+    setMessages((m) => [...m, userMsg]);
+
     try {
-      // 🔗 Replace /api/chat with your real endpoint
-      const res = await fetch("/api/chat", {
+      const res = await fetch("/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText }),
+        body: JSON.stringify({ prompt: updatedHistory }),
       });
 
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
       const data = await res.json();
-      // Expecting { reply: "text" } from backend
+      const reply = data.choices?.[0]?.message?.content || "No response received.";
+
       const botMsg = {
         id: crypto.randomUUID(),
         role: "assistant",
-        text: data.reply ?? "I’m here to help.",
+        text: reply,
       };
+      setConversationHistory((prev) => prev + `\nAssistant: ${reply}`);
       setMessages((m) => [...m, botMsg]);
     } catch (e) {
       setError("Sorry, I couldn't reach the server. Please try again.");

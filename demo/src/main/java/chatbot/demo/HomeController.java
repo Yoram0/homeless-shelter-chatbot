@@ -1,12 +1,13 @@
 package chatbot.demo;
 
+import org.springframework.stereotype.Controller;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 @CrossOrigin
-@RestController
+@Controller
 public class HomeController {
 
     private final RapidService rapidService;
@@ -16,13 +17,22 @@ public class HomeController {
         this.rapidService = rapidService;
     }
 
+    // serve react UI from static folder
+    @RequestMapping("/")
+    public String index() {
+        return "forward:/index.html";
+    }
+
+    /* needed "/" to serve from static
     // test endpoint to verify Spring is running
     @GetMapping("/")
     public String home() {
         return "Spring Boot is running";
     }
+    */
 
     // GET method to call the RapidAPI needs zipcode
+    @ResponseBody
     @GetMapping("/api/shelter")
     public Mono<String> getShelterByZip(@RequestParam String zipcode) {
         return rapidService.getByZip(zipcode);
