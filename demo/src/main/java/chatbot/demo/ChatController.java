@@ -7,10 +7,18 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 import java.util.Map;
 
+
 @RestController     // Makes this class a REST controller for HTTP requests
 @CrossOrigin(origins = "https://utdshelterbot7.com")        // Allows requests from frontend
 public class ChatController {
 
+    private final RapidService rapidService;
+    public ChatController(RapidService rapidService) {
+    this.rapidService = rapidService;
+}
+
+
+    
     // Handles POST requests to /chat endpoint
     @PostMapping("/chat")
     public Mono<ResponseEntity<String>> chat(@RequestBody Map<String, String> payload) {
@@ -23,6 +31,7 @@ public class ChatController {
 
         System.out.println("Sending POST to LM Studio.");
         WebClient client = WebClient.create("http://192.168.4.101:1234");   // Create WebClient that sends the request to LM Studio (temp)
+        
 
         // Send POST request to LM Studio's chat completion endpoint
         return client.post()
