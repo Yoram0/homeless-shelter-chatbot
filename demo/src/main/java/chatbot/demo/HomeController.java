@@ -47,7 +47,7 @@ class RapidService {
     public RapidService() {
         this.client = WebClient.builder()
                 .baseUrl("https://homeless-shelter.p.rapidapi.com")
-                .defaultHeader("x-rapidapi-key", "9b9e81e29cmshad754327cf7c3bcp1636c1jsn6e6f41957c77")
+                .defaultHeader("x-rapidapi-key", "")
                 .defaultHeader("x-rapidapi-host", "homeless-shelter.p.rapidapi.com")
                 .build();
     }
