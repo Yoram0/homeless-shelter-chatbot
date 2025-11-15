@@ -7,7 +7,7 @@ import { Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import Chatbot from "./pages/Chatbot";
 import NavBar from "./Components/NavBar";
-import { cleanInput } from "./utils/inputCleaner";
+import Resources from "./pages/Resources";
 
 function App() {
   // re-add free-text input state for the original chatbot UI
@@ -15,7 +15,6 @@ function App() {
 
   const [chatlog, setChatlog] = useState([]); // State to store the chat history
   const [loading, setLoading] = useState(false); // State to see if message is being sent
-  // const [conversationHistory, setConversationHistory] = useState("");
 
   // New form states
   const [mode, setMode] = useState("zip"); // "zip" or "city"
@@ -23,7 +22,46 @@ function App() {
   const [city, setCity] = useState("");
   const [regionState, setRegionState] = useState("");
 
-  
+  // Function to send user messages to the backend + updating chatlog
+  const sendMessage = async (userMessage) => {
+    if (!userMessage.trim()) return;
+    setLoading(true);
+
+    try {
+      const res = await fetch("http://localhost:8080/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: userMessage }),
+      });
+
+      const data = await res.json();
+      const reply =
+        data.choices?.[0]?.message?.content || "No response received.";
+
+      setChatlog((prev) => [
+        ...prev,
+        { role: "user", content: userMessage },
+        { role: "assistant", content: reply },
+      ]);
+    } catch (err) {
+      console.error(err);
+      setChatlog((prev) => [
+        ...prev,
+        { role: "user", content: userMessage },
+        { role: "assistant", content: "Error contacting chatbot." },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendFreeText = async () => {
+    if (!input.trim()) return; // don't send empty
+    const userMessage = input;
+    setInput(""); // clear input box (convenience)
+    await sendMessage(userMessage);
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
 
@@ -60,6 +98,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/chatbot" element={<Chatbot />} />
+          <Route path="/resources" element={<Resources />} />
         </Routes>
       </main>
     </div>
