@@ -18,18 +18,10 @@ public class HomeController {
     }
 
     // serve react UI from static folder
-    @RequestMapping("/")
-    public String index() {
+    @RequestMapping(value = {"/{path:[^\\.]*}"})
+    public String forward() {
         return "forward:/index.html";
     }
-
-    /* needed "/" to serve from static
-    // test endpoint to verify Spring is running
-    @GetMapping("/")
-    public String home() {
-        return "Spring Boot is running";
-    }
-    */
 
     // GET method to call the RapidAPI needs zipcode
     @ResponseBody
