@@ -38,15 +38,16 @@ export default function Chatbot() {
     let updatedHistory = conversationHistory + `\nUser: ${cleaned}`;    // Append cleaned input to message history
 
     // Every 5 messages (excluding initial assistant): summarize history
+    /*
     if (messages.length >= nextSummaryAt) {
       const summary = await summarizeHistory(updatedHistory);
       updatedHistory = summary + `\nUser: ${cleaned}`;
       setConversationHistory(summary);
       setNextSummaryAt(nextSummaryAt + 1);      // progressively increase interval
     } else {
+      */
       setConversationHistory(updatedHistory);
-    }
-
+    //}
 
     // Add user message to UI
     const userMsg = {
@@ -64,11 +65,30 @@ export default function Chatbot() {
         body: JSON.stringify({ prompt: updatedHistory }),
       });
 
+      console.log("Raw response object:", res);
+
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
-      const data = await res.json();
 
-      let reply = data.choices?.[0]?.message?.content || "No response received.";
+      // Log raw body before parsing
+      const rawText = await res.text();
+      console.log("Raw response body:", rawText);
 
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error("Failed to parse JSON:", parseErr);
+        throw new Error("Backend did not return valid JSON");
+      }
+
+      console.log("Backend response JSON:", data);
+
+      let reply = (data.reply || "").trim();
+      if (!reply) reply = "No response received.";
+
+      console.log("Final reply:", reply);
+
+      /* Temp disable trimming
       // Trim multi-turn hallucinations
       const hallucinationStart = reply.indexOf("\nUser:");
       if (hallucinationStart !== -1) {
@@ -84,6 +104,7 @@ export default function Chatbot() {
       }
 
       reply = reply.trimStart();    // Remove leading spaces
+      */
 
       // Add chatbot message to UI
       const botMsg = {
@@ -164,9 +185,25 @@ async function summarizeHistory(historyText) {
       }),
     });
 
+    console.log("Raw summary response object:", res);
+
     if (!res.ok) throw new Error(`Summary failed: ${res.status}`);
-    const data = await res.json();
-    let summary = data.choices?.[0]?.message?.content || "";
+
+    const rawText = await res.text();
+    console.log("Raw summary body:", rawText);
+
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (parseErr) {
+      console.error("Failed to parse summary JSON:", parseErr);
+      throw new Error("Backend did not return valid JSON for summary");
+    }
+
+    console.log("Backend summary JSON:", data);
+
+    // Use the same field as normal chat
+    let summary = (data.reply || "").trim();
 
     // Trim hallucinated continuation
     const hallucinationStart = summary.indexOf("\nUser:");
@@ -181,11 +218,11 @@ async function summarizeHistory(historyText) {
       summary = summary.substring(markerIndex + marker.length).trim();
     }
 
-    summary = summary.trimStart();              // Remove leading whitespace
-    console.log("Final summary:", summary);     // QA log
+    summary = summary.trimStart();
+    console.log("Final summary:", summary);
     return summary;
   } catch (e) {
     console.error("Failed to summarize:", e);
-    return historyText;                         // Fallback to full history
+    return historyText; // Fallback to full history
   }
 }

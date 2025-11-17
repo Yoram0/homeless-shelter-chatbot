@@ -1,9 +1,9 @@
 package chatbot.demo;
 
 import org.springframework.stereotype.Controller;
-import org.springframework.stereotype.Service;
+//import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.reactive.function.client.WebClient;
+//import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 @CrossOrigin
@@ -31,6 +31,8 @@ public class HomeController {
     }
 }
 
+
+/* 
 @Service
 class RapidService {
 
@@ -54,3 +56,4 @@ class RapidService {
                 .bodyToMono(String.class);
     }
 }
+*/

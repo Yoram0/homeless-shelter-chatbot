@@ -8,6 +8,7 @@ import Home from "./pages/Home";
 import Chatbot from "./pages/Chatbot";
 import NavBar from "./Components/NavBar";
 import { cleanInput } from "./utils/inputCleaner";
+import Resources from "./pages/Resources";
 
 function App() {
   // re-add free-text input state for the original chatbot UI
@@ -60,6 +61,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/chatbot" element={<Chatbot />} />
+          <Route path="/resources" element={<Resources />} />
         </Routes>
       </main>
     </div>
