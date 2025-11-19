@@ -112,7 +112,7 @@
   color: var(--text);
 }
 .badge-emergency { background: color-mix(in srgb, var(--danger) 20%, transparent); }
-.badge-24/7 { background: color-mix(in srgb, var(--ok) 18%, transparent); }
+.badge-24\/7 { background: color-mix(in srgb, var(--ok) 18%, transparent); }
 .badge-info { background: color-mix(in srgb, var(--accent-2) 16%, transparent); }
 
 .card-actions {

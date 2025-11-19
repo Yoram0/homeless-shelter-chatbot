@@ -8,11 +8,11 @@ import Home from "./pages/Home";
 import Chatbot from "./pages/Chatbot";
 import NavBar from "./Components/NavBar";
 import Resources from "./pages/Resources";
+import { cleanInput } from "./utils/inputCleaner";
 
 function App() {
   // re-add free-text input state for the original chatbot UI
   const [input, setInput] = useState("");
-
   const [chatlog, setChatlog] = useState([]); // State to store the chat history
   const [loading, setLoading] = useState(false); // State to see if message is being sent
 
@@ -31,7 +31,7 @@ function App() {
       const res = await fetch("http://localhost:8080/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: userMessage }),
+        body: JSON.stringify({ prompt: cleanInput(userMessage) }),
       });
 
       const data = await res.json();
