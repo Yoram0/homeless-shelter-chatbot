@@ -5,120 +5,85 @@ import { cleanInput } from "../utils/inputCleaner";
 import "../components/Chat.css";
 
 export default function Chatbot() {
-  // Initial message and state
   const [messages, setMessages] = useState([
-    {
-      id: "m0",
-      role: "assistant",
-      text: "Hi! I can help you find nearby shelters. What city or ZIP code are you in?",
-    },
+    { id: "m0", role: "assistant", text: "Hi! I can help you find nearby shelters. What city or ZIP code are you in?" }
   ]);
 
-  const [isTyping, setIsTyping] = useState(false);                      // Typing state
-  const [error, setError] = useState("");                               // Error state
-  const [conversationHistory, setConversationHistory] = useState("");   // Conversation history for memory
-  const scrollerRef = useRef(null);                                     // Auto-scroll
-  const [nextSummaryAt, setNextSummaryAt] = useState(5);                // New memory approach
+  const [isTyping, setIsTyping] = useState(false);
+  const [error, setError] = useState("");
+  const [conversationHistory, setConversationHistory] = useState([
+    { role: "assistant", content: "Hi! I can help you find nearby shelters. What ZIP code are you in?" }
+  ]);
+  const scrollerRef = useRef(null);
+  const [nextSummaryAt, setNextSummaryAt] = useState(5);
 
-  // Auto-scroll to bottom when message or typing state changes
+  const MAX_TURNS = 5; // keep last 5 user+assistant pairs
+
   useEffect(() => {
-    scrollerRef.current?.scrollTo({
-      top: scrollerRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isTyping]);
 
-  // Main message handler
+  function getLimitedHistory(historyArray) {
+    const systemMessages = historyArray.filter(m => m.role === "system");
+    const nonSystem = historyArray.filter(m => m.role !== "system");
+    const limited = nonSystem.slice(-MAX_TURNS * 2); // each turn has 2 messages
+    return [...systemMessages, ...limited];
+  }
+
   async function sendMessage(userText) {
     if (!userText.trim()) return;
     setError("");
     setIsTyping(true);
 
-    const cleaned = cleanInput(userText);                               // Clean input for security/privacy
-    let updatedHistory = conversationHistory + `\nUser: ${cleaned}`;    // Append cleaned input to message history
+    const cleaned = cleanInput(userText);
 
-    // Every 5 messages (excluding initial assistant): summarize history
-    /*
-    if (messages.length >= nextSummaryAt) {
-      const summary = await summarizeHistory(updatedHistory);
-      updatedHistory = summary + `\nUser: ${cleaned}`;
-      setConversationHistory(summary);
-      setNextSummaryAt(nextSummaryAt + 1);      // progressively increase interval
-    } else {
-      */
-      setConversationHistory(updatedHistory);
-    //}
-
-    // Add user message to UI
-    const userMsg = {
-      id: crypto.randomUUID(),
-      role: "user",
-      text: cleaned,
-    };
+    // Add user message to UI + history
+    const userMsg = { id: crypto.randomUUID(), role: "user", text: cleaned };
     setMessages((m) => [...m, userMsg]);
+    const newHistory = [...conversationHistory, { role: "user", content: cleaned }];
+
+    let updatedHistory = newHistory;
+
+    // Summarize every 5 messages
+    if (messages.length >= nextSummaryAt) {
+      const summary = await summarizeHistory(newHistory);
+      updatedHistory = [{ role: "system", content: summary }, { role: "user", content: cleaned }];
+      setNextSummaryAt(nextSummaryAt + 1);
+    }
+
+    setConversationHistory(updatedHistory);
 
     try {
-      // Send updated history to backend
+      const limitedHistory = getLimitedHistory(updatedHistory);
+
       const res = await fetch("/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: updatedHistory }),
+        body: JSON.stringify({ messages: limitedHistory }),
       });
 
+      // Debug logs
       console.log("Raw response object:", res);
 
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
 
-      // Log raw body before parsing
       const rawText = await res.text();
       console.log("Raw response body:", rawText);
 
-      let data;
-      try {
-        data = JSON.parse(rawText);
-      } catch (parseErr) {
-        console.error("Failed to parse JSON:", parseErr);
-        throw new Error("Backend did not return valid JSON");
-      }
-
+      let data = JSON.parse(rawText);
       console.log("Backend response JSON:", data);
 
       let reply = (data.reply || "").trim();
-      if (!reply) reply = "No response received.";
-
       console.log("Final reply:", reply);
 
-      /* Temp disable trimming
-      // Trim multi-turn hallucinations
-      const hallucinationStart = reply.indexOf("\nUser:");
-      if (hallucinationStart !== -1) {
-        console.log("Trimming hallucinated continuation at index:", hallucinationStart);
-        reply = reply.substring(0, hallucinationStart).trim();
-      }
+      if (!reply) reply = "No response received.";
 
-      // Remove "(Note: ...)" hallucinations
-      const noteStart = reply.indexOf("(Note:");
-      if (noteStart !== -1) {
-        console.log("Trimming hallucinated note at index:", noteStart);
-        reply = reply.substring(0, noteStart).trim();
-      }
-
-      reply = reply.trimStart();    // Remove leading spaces
-      */
-
-      // Add chatbot message to UI
-      const botMsg = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        text: reply,
-      };
-
-      // Update conversation history and message list
-      setConversationHistory((prev) => prev + `\nAssistant: ${reply}`);
+      const botMsg = { id: crypto.randomUUID(), role: "assistant", text: reply };
       setMessages((m) => [...m, botMsg]);
+      setConversationHistory((prev) => [...prev, { role: "assistant", content: reply }]);
 
     } catch (e) {
-      // Network error handling
+      console.error("Error in sendMessage:", e);
       setError("Sorry, I couldn't reach the server. Please try again.");
       const botMsg = {
         id: crypto.randomUUID(),
@@ -127,102 +92,57 @@ export default function Chatbot() {
       };
       setMessages((m) => [...m, botMsg]);
     } finally {
-      setIsTyping(false);   // Reset typing state
+      setIsTyping(false);
     }
   }
 
-  // Page layout
   return (
     <div className="chat-page">
       <header className="chat-header">
         <h1>Find Shelter</h1>
-        <p>
-          Ask about shelters by city, ZIP, or needs (pets, no ID, 24/7, etc.).
-        </p>
+        <p>Ask about shelters by city, ZIP, or needs (pets, no ID, 24/7, etc.).</p>
       </header>
 
       <section className="chat-panel">
-        <div
-          className="chat-scroll"
-          ref={scrollerRef}
-          aria-live="polite"
-          aria-busy={isTyping}
-        >
+        <div className="chat-scroll" ref={scrollerRef} aria-live="polite" aria-busy={isTyping}>
           {messages.map((m) => (
             <ChatMessage key={m.id} role={m.role} text={m.text} />
           ))}
-
           {isTyping && (
             <div className="msg bot">
               <div className="bubble typing">
-                <span className="dot"></span>
-                <span className="dot"></span>
-                <span className="dot"></span>
+                <span className="dot"></span><span className="dot"></span><span className="dot"></span>
               </div>
             </div>
           )}
         </div>
-
         <ChatInput onSend={sendMessage} disabled={isTyping} />
-        {error && (
-          <div className="chat-error" role="alert">
-            {error}
-          </div>
-        )}
+        {error && <div className="chat-error" role="alert">{error}</div>}
       </section>
     </div>
   );
 }
 
 // Summarize history for more efficient memory
-async function summarizeHistory(historyText) {
+async function summarizeHistory(historyArray) {
+  const textTranscript = historyArray.map(m => `${m.role}: ${m.content}`).join("\n");
   try {
     const res = await fetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        prompt: `You are a summarization engine. Do not respond as a chatbot. Summarize the following conversation in 2–3 sentences for internal memory use only. Do not greet, advise, or offer help.\n\n${historyText}`,
+        messages: [
+          { role: "system", content: "You are a summarization engine. Summarize the following conversation in 2–3 sentences for internal memory use only." },
+          { role: "user", content: textTranscript }
+        ]
       }),
     });
-
-    console.log("Raw summary response object:", res);
-
-    if (!res.ok) throw new Error(`Summary failed: ${res.status}`);
-
     const rawText = await res.text();
-    console.log("Raw summary body:", rawText);
-
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch (parseErr) {
-      console.error("Failed to parse summary JSON:", parseErr);
-      throw new Error("Backend did not return valid JSON for summary");
-    }
-
-    console.log("Backend summary JSON:", data);
-
-    // Use the same field as normal chat
+    let data = JSON.parse(rawText);
     let summary = (data.reply || "").trim();
-
-    // Trim hallucinated continuation
-    const hallucinationStart = summary.indexOf("\nUser:");
-    if (hallucinationStart !== -1) {
-      summary = summary.substring(0, hallucinationStart);
-    }
-
-    // Extract only the summary portion if it includes a marker
-    const marker = "Previous conversation summary:";
-    const markerIndex = summary.indexOf(marker);
-    if (markerIndex !== -1) {
-      summary = summary.substring(markerIndex + marker.length).trim();
-    }
-
-    summary = summary.trimStart();
-    console.log("Final summary:", summary);
     return summary;
   } catch (e) {
     console.error("Failed to summarize:", e);
-    return historyText; // Fallback to full history
+    return textTranscript; // fallback
   }
 }

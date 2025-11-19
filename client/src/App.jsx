@@ -11,6 +11,7 @@ import { cleanInput } from "./utils/inputCleaner";
 import Resources from "./pages/Resources";
 
 function App() {
+
   // re-add free-text input state for the original chatbot UI
   const [input, setInput] = useState("");
 
