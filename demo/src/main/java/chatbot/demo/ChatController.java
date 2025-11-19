@@ -1,70 +1,194 @@
 package chatbot.demo;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
-import java.util.List;
-import java.util.Map;
+import org.springframework.http.MediaType;
 
+import jakarta.annotation.PostConstruct;
+import java.nio.file.Files;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-
-@RestController     // Makes this class a REST controller for HTTP requests
-@CrossOrigin(origins = "https://utdshelterbot7.com")        // Allows requests from frontend
-
+@RestController
+@CrossOrigin(origins = "https://utdshelterbot7.com")
 public class ChatController {
 
-    // LLM Model names
-    String mistral = "mistral-7b-instruct-v0.2";        // Testing
-    String llama = "llama-4-scout-17b-16e-instruct";    // Production
+    private final RapidService rapidService;
 
-    // Handles POST requests to /chat endpoint
-    @PostMapping("/chat")
-    public Mono<ResponseEntity<String>> chat(@RequestBody Map<String, String> payload) {
-
-        String userInput = payload.get("prompt");                       // Extract user's message from request body
-        System.out.println("______________________________________________________________________________________________________\n");
-        System.out.println("Received prompt: " + userInput);            // Makes sure spring boot received a message from frontend
-
-        String systemPrompt = "You are a compassionate chatbot for the homeless. Respond only to what the user says. Be aware of potentially crisis-prone users. Do NOT let the conversation get off topic.";      // Eventually replace with better text file
-        String fullPrompt = systemPrompt + "\n\n" + userInput;                                  // need to fix: chatbot overcompensates and assumes something is wrong
-
-        System.out.println("Sending POST to LM Studio.");
-        WebClient client = WebClient.create("http://192.168.4.101:1234");   // Create WebClient that sends the request to LM Studio (temp)
-
-        // Send POST request to LM Studio's chat completion endpoint
-        return client.post()
-            .uri("/v1/chat/completions")                    // LM Studio's endpoint
-            .header("Content-Type", "application/json")     // Sets request content type
-            .bodyValue(Map.of(                              // Build request body
-                "model", mistral,   // Model name (NEEDS to be changed when choosing different model)
-                "temperature", 0.7,                         // Randomness
-                "max_tokens", 200,                          // Limit response length
-                "messages", List.of(Map.of("role", "user", "content", fullPrompt))  // Chat format
-            ))
-            .retrieve()                     // Send request and ready to handle response
-            .bodyToMono(String.class)       // Convert response body to Mono<String>
-            .map(response -> {
-                System.out.println("LM Studio response: " + extractAssistantReply(response));      // Log/Confirm raw response from LMS
-                return ResponseEntity.ok(response);                         // Return response (full JSON) to the frontend as a 200 ok
-            })
-            .onErrorResume(e -> {
-                // Error handler and returns a 500 error message
-                System.out.println("Error contacting LM Studio: " + e.getMessage());
-                e.printStackTrace();
-                return Mono.just(ResponseEntity.status(500).body("Chatbot error: " + e.getMessage()));
-            });
+    public ChatController(RapidService rapidService) {
+        this.rapidService = rapidService;
     }
-    
-    // Method to just display the full response from from the chatbot (not trimmed)
+
+    // together.ai config from application.properties
+    @Value("${llm.api.key}")
+    private String apiKey;
+
+    @Value("${llm.api.url}")
+    private String apiUrl;
+
+    @Value("${llm.model.dev}")
+    private String devModel;
+
+    @Value("${llm.model.prod}")
+    private String prodModel;
+
+    // system prompt file
+    @Value("classpath:system-prompt.txt")
+    private Resource systemPromptResource;
+
+    private String systemPrompt;
+
+    // Toggle: true (mistral [development]), false (llama [production])
+    private boolean useDevModel = true;
+
+    @PostConstruct
+    public void init() throws Exception {
+        systemPrompt = new String(Files.readAllBytes(systemPromptResource.getFile().toPath()));
+        System.out.println("Loaded system prompt:\n" + systemPrompt);
+    }
+
+    @PostMapping(
+        value = "/chat",
+        produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public Mono<ResponseEntity<Map<String,String>>> chat(@RequestBody Map<String, Object> payload) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, String>> messages = (List<Map<String, String>>) payload.get("messages");
+
+        // enforce max turns (safety net)
+        int MAX_TURNS = 8; // user+assistant messages
+        List<Map<String, String>> systemMessages = new ArrayList<>();
+        List<Map<String, String>> nonSystem = new ArrayList<>();
+        for (Map<String, String> m : messages) {
+            if ("system".equals(m.get("role"))) systemMessages.add(m);
+            else nonSystem.add(m);
+        }
+        if (nonSystem.size() > MAX_TURNS) {
+            nonSystem = nonSystem.subList(nonSystem.size() - MAX_TURNS, nonSystem.size());
+        }
+        messages = new ArrayList<>();
+        messages.addAll(systemMessages);
+        messages.addAll(nonSystem);
+
+        // Extract latest user input for shelter detection
+        String userInput = "";
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if ("user".equals(messages.get(i).get("role"))) {
+                userInput = messages.get(i).get("content");
+                break;
+            }
+        }
+
+        System.out.println("Received latest user input: " + userInput);
+
+        // Detect ZIP code
+        Pattern zipPattern = Pattern.compile("\\b\\d{5}\\b");
+        Matcher zipMatcher = zipPattern.matcher(userInput);
+
+        if (zipMatcher.find() && userInput.toLowerCase().contains("shelter")) {
+            String zipcode = zipMatcher.group();
+            System.out.println("Detected shelter intent with ZIP: " + zipcode);
+            return rapidService.getByZip(zipcode)
+                .map(apiResponse -> {
+                    String formatted = formatShelterResponse(apiResponse);
+                    return ResponseEntity.ok(Map.of("reply", formatted));
+                });
+        }
+
+        // Detect "shelter in City, State"
+        if (userInput.toLowerCase().contains("shelter")) {
+            Pattern cityStatePattern = Pattern.compile("shelter in ([A-Za-z\\s]+),?\\s*([A-Za-z]{2})", Pattern.CASE_INSENSITIVE);
+            Matcher cityStateMatcher = cityStatePattern.matcher(userInput);
+
+            if (cityStateMatcher.find()) {
+                String city = cityStateMatcher.group(1).trim();
+                String state = cityStateMatcher.group(2).trim();
+                return rapidService.getByCityState(city, state)
+                    .map(apiResponse -> {
+                        String formatted = formatShelterResponse(apiResponse);
+                        return ResponseEntity.ok(Map.of("reply", formatted));
+                    })
+                    .onErrorResume(e -> Mono.just(ResponseEntity.status(404)
+                        .body(Map.of("reply", "Sorry, I couldn’t find shelters for " + city + ", " + state))));
+            }
+        }
+
+        // Send to together.ai
+        String modelName = useDevModel ? devModel : prodModel;
+        WebClient client = WebClient.create(apiUrl);
+
+        return client.post()
+            .uri("/v1/chat/completions")
+            .header("Authorization", "Bearer " + apiKey)
+            .header("Content-Type", "application/json")
+            .bodyValue(Map.of(
+                "model", modelName,
+                "temperature", 0.7,
+                "max_tokens", 200,
+                "messages", messages
+            ))
+            .retrieve()
+            .bodyToMono(String.class)
+            .map(response -> {
+                String reply = extractAssistantReply(response);
+                return ResponseEntity.ok(Map.of("reply", reply));
+            })
+            .onErrorResume(e -> Mono.just(
+                ResponseEntity.status(500).body(Map.of("reply", "Chatbot error: " + e.getMessage()))
+            ));
+    }
+
     private String extractAssistantReply(String json) {
         try {
-            // Minimal JSON parsing using Jackson
-            com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+            com.fasterxml.jackson.databind.JsonNode root =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
             return root.path("choices").get(0).path("message").path("content").asText();
         } catch (Exception e) {
-            System.out.println("Error parsing LM Studio response: " + e.getMessage());
             return "[Error extracting reply]";
+        }
+    }
+
+    private String formatShelterResponse(String json) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(json);
+
+            if (!root.isArray() || root.isEmpty()) {
+                return "Sorry, no shelters were found for that location. Try another ZIP code or city/state.";
+            }
+
+            StringBuilder sb = new StringBuilder("Here are the nearest shelters:\n");
+            for (com.fasterxml.jackson.databind.JsonNode shelter : root) {
+                String name = shelter.has("shelter_name") ? shelter.path("shelter_name").asText()
+                            : shelter.has("name") ? shelter.path("name").asText()
+                            : "[Unnamed Shelter]";
+                String address = shelter.path("address").asText();
+                String city = shelter.path("city").asText();
+                String state = shelter.path("state").asText();
+                String zip = shelter.has("zip") ? shelter.path("zip").asText()
+                            : shelter.has("zip_code") ? shelter.path("zip_code").asText()
+                            : "";
+                String phone = shelter.has("phone_number") ? shelter.path("phone_number").asText() : "";
+                String website = shelter.has("official_website") ? shelter.path("official_website").asText() : "";
+
+                sb.append("• ").append(name)
+                  .append(" — ").append(address)
+                  .append(", ").append(city)
+                  .append(", ").append(state)
+                  .append(" ").append(zip);
+
+                if (!phone.isEmpty()) sb.append(" | Phone: ").append(phone);
+                if (!website.isEmpty()) sb.append(" | Website: ").append(website);
+                sb.append("\n");
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return "Sorry, I couldn’t format the shelter information.";
         }
     }
 }

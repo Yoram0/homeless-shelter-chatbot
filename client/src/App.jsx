@@ -9,8 +9,10 @@ import Chatbot from "./pages/Chatbot";
 import NavBar from "./Components/NavBar";
 import Resources from "./pages/Resources";
 import { cleanInput } from "./utils/inputCleaner";
+import Resources from "./pages/Resources";
 
 function App() {
+
   // re-add free-text input state for the original chatbot UI
   const [input, setInput] = useState("");
   const [chatlog, setChatlog] = useState([]); // State to store the chat history
