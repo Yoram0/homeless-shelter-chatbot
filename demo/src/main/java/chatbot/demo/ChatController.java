@@ -15,7 +15,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @RestController
-@CrossOrigin(origins = "https://utdshelterbot7.com")
+@CrossOrigin(origins = {
+    "https://utdshelterbot7.com",
+    "http://localhost:5173"
+})
 public class ChatController {
 
     private final RapidService rapidService;
@@ -87,18 +90,37 @@ public class ChatController {
         System.out.println("Received latest user input: " + userInput);
 
         // Detect ZIP code
+        String lower = userInput.toLowerCase();
+
+        boolean wantsShelterHelp =
+        lower.contains("shelter near")
+     || lower.contains("find a shelter")
+     || lower.contains("place to stay")
+     || lower.contains("where can i stay")
+     || lower.contains("need shelter")
+     || lower.contains("help me find a shelter")
+     || lower.contains("place to sleep")
+     || lower.contains("find somewhere to stay")
+     || lower.contains("can you help me find shelter")
+     || lower.contains("homeless shelter");
+
         Pattern zipPattern = Pattern.compile("\\b\\d{5}\\b");
         Matcher zipMatcher = zipPattern.matcher(userInput);
 
-        if (zipMatcher.find() && userInput.toLowerCase().contains("shelter")) {
-            String zipcode = zipMatcher.group();
-            System.out.println("Detected shelter intent with ZIP: " + zipcode);
-            return rapidService.getByZip(zipcode)
-                .map(apiResponse -> {
-                    String formatted = formatShelterResponse(apiResponse);
-                    return ResponseEntity.ok(Map.of("reply", formatted));
-                });
-        }
+        if (wantsShelterHelp) {
+            if (zipMatcher.find()) {
+        String zipcode = zipMatcher.group();
+        System.out.println("Detected shelter intent with ZIP: " + zipcode);
+        return rapidService.getByZip(zipcode)
+            .map(apiResponse -> ResponseEntity.ok(Map.of("reply", formatShelterResponse(apiResponse))));
+    }
+
+    // ask politely for ZIP if not given
+    return Mono.just(ResponseEntity.ok(
+        Map.of("reply", "I’m here to help — what city or ZIP code are you in?")
+    ));
+}
+
 
         // Detect "shelter in City, State"
         if (userInput.toLowerCase().contains("shelter")) {
